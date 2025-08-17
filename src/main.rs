@@ -14,12 +14,13 @@
  * limitations under the License.
  */
 
-use std::env;
-use std::io;
-use std::process;
-use std::process::Command;
-use std::{thread, time};
 use morse::encode;
+use std::env;
+use std::fs::File;
+use std::io;
+use std::io::Write;
+use std::process;
+use std::{thread, time};
 
 const MULTIPLIER: u64 = 150;
 
@@ -34,23 +35,18 @@ const THINKPAD_LID_LOGO_LED: &str = "/sys/class/leds/tpacpi::lid_logo_dot/bright
 
 fn led(state: bool) -> io::Result<()> {
     let value = if state { "255" } else { "0" };
-    let output = Command::new("sudo")
-        .arg("sh")
-        .arg("-c")
-        .arg(format!("echo {} > {}", value, THINKPAD_LID_LOGO_LED))
-        .output()?;
-    
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(io::Error::new(io::ErrorKind::Other, stderr.to_string()));
-    }
+
+    File::create(THINKPAD_LID_LOGO_LED)?.write_all(value.as_bytes())?;
 
     Ok(())
 }
 fn encode_morse(input: &str) -> io::Result<String> {
     match encode::encode(input) {
         Ok(morse) => Ok(morse),
-        Err(e) => Err(io::Error::new(io::ErrorKind::Other, format!("Failed to encode Morse: {:?}", e))),
+        Err(e) => Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("Failed to encode Morse: {:?}", e),
+        )),
     }
 }
 
@@ -60,7 +56,7 @@ fn main() -> io::Result<()> {
         1 => {
             eprintln!("No string argument provided. Exiting.");
             process::exit(1);
-        },
+        }
         2 => encode_morse(&args[1])?,
         _ => {
             eprintln!("Too many arguments. Exiting.");
