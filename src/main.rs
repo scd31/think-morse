@@ -20,16 +20,8 @@ use std::fs::File;
 use std::io;
 use std::io::Write;
 use std::process;
-use std::{thread, time};
-
-const MULTIPLIER: u64 = 150;
-
-const DOT_LENGTH: time::Duration = time::Duration::from_millis(1 * MULTIPLIER);
-const DASH_LENGTH: time::Duration = time::Duration::from_millis(3 * MULTIPLIER);
-const INNER_ELEMENT_GAP: time::Duration = time::Duration::from_millis(1 * MULTIPLIER);
-const LETTER_GAP: time::Duration = time::Duration::from_millis(3 * MULTIPLIER);
-const WORD_GAP: time::Duration = time::Duration::from_millis(7 * MULTIPLIER);
-const LOOP_GAP: time::Duration = time::Duration::from_millis(15 * MULTIPLIER);
+use std::thread;
+use std::time::Duration;
 
 const THINKPAD_LID_LOGO_LED: &str = "/sys/class/leds/tpacpi::lid_logo_dot/brightness";
 
@@ -43,10 +35,7 @@ fn led(state: bool) -> io::Result<()> {
 fn encode_morse(input: &str) -> io::Result<String> {
     match encode::encode(input) {
         Ok(morse) => Ok(morse),
-        Err(e) => Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("Failed to encode Morse: {:?}", e),
-        )),
+        Err(e) => Err(io::Error::other(format!("Failed to encode Morse: {:?}", e))),
     }
 }
 
@@ -64,36 +53,80 @@ fn main() -> io::Result<()> {
         }
     };
 
+    let timer = MorseTimer::new(15.0);
+
     let char_vec: Vec<char> = morse_str.chars().collect();
 
+    led(false)?;
+
     loop {
-        for (i, c) in char_vec.iter().enumerate() {
-            led(false)?;
+        let mut last_char = '\0';
+        let mut iter = char_vec.iter().peekable();
+        while let Some(c) = iter.next() {
+            let is_end_of_character = [Some(' '), Some('/')].contains(&iter.peek().map(|x| **x));
 
             if *c == '.' {
                 led(true)?;
-                thread::sleep(DOT_LENGTH);
+                thread::sleep(timer.dot_length());
                 led(false)?;
 
-                if char_vec.len() != i + 1 && (char_vec[i + 1] != ' ' && char_vec[i + 1] != '/') {
-                    thread::sleep(INNER_ELEMENT_GAP);
+                if !is_end_of_character {
+                    thread::sleep(timer.inner_character_gap_length());
                 }
             } else if *c == '_' {
                 led(true)?;
-                thread::sleep(DASH_LENGTH);
+                thread::sleep(timer.dash_length());
                 led(false)?;
 
-                if char_vec.len() != i + 1 && (char_vec[i + 1] != ' ' && char_vec[i + 1] != '/') {
-                    thread::sleep(INNER_ELEMENT_GAP);
+                if !is_end_of_character {
+                    thread::sleep(timer.inner_character_gap_length());
                 }
             } else if *c == ' ' {
-                if char_vec.len() != i + 1 && (char_vec[i + 1] != ' ' && char_vec[i - 1] != '/') {
-                    thread::sleep(LETTER_GAP);
+                // so that we don't sleep in the space before/after a slash
+                if last_char != '/' && iter.peek() != Some(&&'/') {
+                    thread::sleep(timer.letter_gap_length());
                 }
             } else if *c == '/' {
-                thread::sleep(WORD_GAP);
+                thread::sleep(timer.word_gap_length());
             }
+
+            last_char = *c;
         }
-        thread::sleep(LOOP_GAP);
+        thread::sleep(timer.loop_gap_length());
+    }
+}
+
+struct MorseTimer {
+    dot_length: Duration,
+}
+
+impl MorseTimer {
+    fn new(wpm: f64) -> Self {
+        let dot_length = Duration::from_secs_f64(60.0 / (wpm * 50.0));
+        Self { dot_length }
+    }
+
+    fn dot_length(&self) -> Duration {
+        self.dot_length
+    }
+
+    fn dash_length(&self) -> Duration {
+        self.dot_length * 3
+    }
+
+    fn inner_character_gap_length(&self) -> Duration {
+        self.dot_length
+    }
+
+    fn letter_gap_length(&self) -> Duration {
+        self.dot_length * 3
+    }
+
+    fn word_gap_length(&self) -> Duration {
+        self.dot_length * 7
+    }
+
+    fn loop_gap_length(&self) -> Duration {
+        self.dot_length * 15
     }
 }
