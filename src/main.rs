@@ -14,16 +14,29 @@
  * limitations under the License.
  */
 
+use clap::Parser;
 use morse::encode;
-use std::env;
 use std::fs::File;
 use std::io;
 use std::io::Write;
-use std::process;
 use std::thread;
 use std::time::Duration;
 
 const THINKPAD_LID_LOGO_LED: &str = "/sys/class/leds/tpacpi::lid_logo_dot/brightness";
+
+#[derive(Parser)]
+struct Args {
+    /// morse code speed, in words per minute (wpm)
+    #[arg(short, long, default_value = "10")]
+    wpm: f64,
+
+    /// whether to loop indefinitely
+    #[arg(short, long)]
+    repeat: bool,
+
+    /// the text to encode
+    text: String,
+}
 
 fn led(state: bool) -> io::Result<()> {
     let value = if state { "255" } else { "0" };
@@ -40,22 +53,11 @@ fn encode_morse(input: &str) -> io::Result<String> {
 }
 
 fn main() -> io::Result<()> {
-    let args: Vec<String> = env::args().collect();
-    let morse_str = match args.len() {
-        1 => {
-            eprintln!("No string argument provided. Exiting.");
-            process::exit(1);
-        }
-        2 => encode_morse(&args[1])?,
-        _ => {
-            eprintln!("Too many arguments. Exiting.");
-            process::exit(1);
-        }
-    };
+    let args = Args::parse();
 
-    let timer = MorseTimer::new(15.0);
+    let timer = MorseTimer::new(args.wpm);
 
-    let char_vec: Vec<char> = morse_str.chars().collect();
+    let char_vec: Vec<char> = encode_morse(&args.text)?.chars().collect();
 
     led(false)?;
 
@@ -92,8 +94,17 @@ fn main() -> io::Result<()> {
 
             last_char = *c;
         }
+
         thread::sleep(timer.loop_gap_length());
+
+        if !args.repeat {
+            break;
+        }
     }
+
+    led(true)?;
+
+    Ok(())
 }
 
 struct MorseTimer {
