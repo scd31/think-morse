@@ -15,7 +15,7 @@ in
       enable = lib.mkEnableOption "think-morse - Blink your thinkpad LED as morse code";
 
       text = lib.mkOption {
-        type = lib.types.string;
+        type = lib.types.str;
         description = "Text message to encode";
       };
 
